@@ -1,0 +1,18 @@
+{
+  "name": "mypubky",
+  "version": "0.14",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@synonymdev/pubky": "^0.6.0",
+    "qr": "^0.5.1"
+  },
+  "devDependencies": {
+    "vite": "^7.1.0"
+  }
+}
