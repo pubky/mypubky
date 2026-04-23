@@ -80,7 +80,7 @@ export const SOCIAL_PLATFORMS = [
 ];
 
 export const AUTH_CAPABILITY_ENTRIES = [
-  "/pub/pubky.app/:rw",
+  `${PUBKY_PROFILE_PATH}:rw`,
   `/pub/${APP_NAME}/:rw`,
   `${PAYKIT_PATH_PREFIX}/:rw`
 ];
