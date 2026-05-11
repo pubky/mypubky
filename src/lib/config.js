@@ -3,11 +3,15 @@ export const PUBKY_PROFILE_PATH = "/pub/pubky.app/profile.json";
 export const CARD_SETTINGS_PATH = `/pub/${APP_NAME}/card.json`;
 export const FILES_PATH = `/pub/${APP_NAME}/files`;
 export const PUBKY_POSTS_PATH = "/pub/pubky.app/posts/";
-export const PAYKIT_PATH_PREFIX = "/pub/paykit/v0";
-export const PAYKIT_DEMO_METHOD_ID = "bitcoin-p2wpkh";
+export const PAYKIT_PATH_PREFIX = "/pub/paykit.app/v0";
+export const PAYKIT_ONCHAIN_METHOD_ID = "onchain";
 export const RELAY_URL = "https://httprelay.pubky.app/inbox/";
 export const NEXUS_URL = import.meta.env.VITE_NEXUS_URL || "https://nexus.pubky.app";
 export const CDN_URL = import.meta.env.VITE_CDN_URL || `${NEXUS_URL}/static`;
+export const PKARR_RELAYS = (import.meta.env.VITE_PKARR_RELAYS || "https://pkarr.pubky.app,https://pkarr.pubky.org")
+  .split(",")
+  .map((relay) => relay.trim())
+  .filter(Boolean);
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 export const DEFAULT_AVATAR_PATH = new URL("../assets/avatar.png", import.meta.url).href;
 export const HOMEPAGE_BRAND_MARK = new URL("../assets/pubky.svg", import.meta.url).href;

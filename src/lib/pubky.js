@@ -1,4 +1,4 @@
-import { AuthFlowKind, Pubky, resolvePubky } from "@synonymdev/pubky";
+import { AuthFlowKind, Client, Pubky, resolvePubky } from "@synonymdev/pubky";
 import {
   AUTH_CAPABILITY_ENTRIES,
   AUTH_CAPABILITIES,
@@ -7,8 +7,9 @@ import {
   DEFAULT_BACKGROUNDS,
   FILES_PATH,
   NEXUS_URL,
-  PAYKIT_DEMO_METHOD_ID,
+  PAYKIT_ONCHAIN_METHOD_ID,
   PAYKIT_PATH_PREFIX,
+  PKARR_RELAYS,
   PUBKY_POSTS_PATH,
   PUBKY_PROFILE_PATH,
   RELAY_URL,
@@ -97,7 +98,7 @@ function createSessionStateError(message, reason, diagnostic = null) {
 
 function getSdk() {
   if (!sdkInstance) {
-    sdkInstance = new Pubky();
+    sdkInstance = Pubky.withClient(new Client({ pkarr: { relays: PKARR_RELAYS } }));
   }
   return sdkInstance;
 }
@@ -439,10 +440,6 @@ async function putJson(session, path, payload) {
   await session.storage.putJson(path, payload);
 }
 
-async function putText(session, path, payload) {
-  await session.storage.putText(path, payload);
-}
-
 async function deletePath(session, path) {
   try {
     await session.storage.delete(path);
@@ -458,19 +455,32 @@ async function putFile(session, path, file) {
   await session.storage.putBytes(path, bytes);
 }
 
-function buildPaykitMethodPath(methodId = PAYKIT_DEMO_METHOD_ID) {
+function buildPaykitMethodPath(methodId = PAYKIT_ONCHAIN_METHOD_ID) {
   return `${PAYKIT_PATH_PREFIX}/${methodId}`;
 }
 
-async function syncDemoPaykitEndpoint(session, enabled, bitcoinAddress = "") {
+async function syncPaykitEndpoint(session, enabled, bitcoinAddress = "") {
   const paykitPath = buildPaykitMethodPath();
+  const supportedPath = `${PAYKIT_PATH_PREFIX}/supported.json`;
 
   if (enabled && bitcoinAddress.trim()) {
-    await putText(session, paykitPath, bitcoinAddress.trim());
+    const method = {
+      method_id: PAYKIT_ONCHAIN_METHOD_ID,
+      endpoint: bitcoinAddress.trim(),
+      enabled: true,
+      updated_at: Date.now()
+    };
+    await Promise.all([
+      putJson(session, paykitPath, method),
+      putJson(session, supportedPath, [method])
+    ]);
     return;
   }
 
-  await deletePath(session, paykitPath);
+  await Promise.all([
+    deletePath(session, paykitPath),
+    deletePath(session, supportedPath)
+  ]);
 }
 
 function createPubkyAppProfile(draft) {
@@ -1209,7 +1219,7 @@ export async function saveProfileBundle(pubky, draft) {
     await Promise.all([
       putJson(session, PUBKY_PROFILE_PATH, pubkyAppProfile),
       putJson(session, CARD_SETTINGS_PATH, cardSettings),
-      syncDemoPaykitEndpoint(session, nextDraft.donateEnabled, nextDraft.bitcoinAddress)
+      syncPaykitEndpoint(session, nextDraft.donateEnabled, nextDraft.bitcoinAddress)
     ]);
   } catch (error) {
     const statusCode = extractStatusCode(error);
