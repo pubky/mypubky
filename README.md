@@ -84,7 +84,7 @@ The app uses Pubky public storage and keeps shared identity data aligned with `p
 - mypubky uploads:
   - `/pub/mypubky.com/files/*`
 - Paykit public method files:
-  - `/pub/paykit.app/v0/*`
+  - `/pub/paykit/v0/*`
 
 In practice:
 

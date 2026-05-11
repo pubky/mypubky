@@ -3,8 +3,12 @@ export const PUBKY_PROFILE_PATH = "/pub/pubky.app/profile.json";
 export const CARD_SETTINGS_PATH = `/pub/${APP_NAME}/card.json`;
 export const FILES_PATH = `/pub/${APP_NAME}/files`;
 export const PUBKY_POSTS_PATH = "/pub/pubky.app/posts/";
-export const PAYKIT_PATH_PREFIX = "/pub/paykit.app/v0";
-export const PAYKIT_ONCHAIN_METHOD_ID = "onchain";
+export const PAYKIT_PATH_PREFIX = "/pub/paykit/v0";
+export const PAYKIT_BITCOIN_METHOD_IDS = {
+  p2wpkh: "btc-bitcoin-p2wpkh",
+  p2wsh: "btc-bitcoin-p2wsh",
+  p2tr: "btc-bitcoin-p2tr"
+};
 export const RELAY_URL = "https://httprelay.pubky.app/inbox/";
 export const NEXUS_URL = import.meta.env.VITE_NEXUS_URL || "https://nexus.pubky.app";
 export const CDN_URL = import.meta.env.VITE_CDN_URL || `${NEXUS_URL}/static`;

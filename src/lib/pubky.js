@@ -7,7 +7,7 @@ import {
   DEFAULT_BACKGROUNDS,
   FILES_PATH,
   NEXUS_URL,
-  PAYKIT_ONCHAIN_METHOD_ID,
+  PAYKIT_BITCOIN_METHOD_IDS,
   PAYKIT_PATH_PREFIX,
   PKARR_RELAYS,
   PUBKY_POSTS_PATH,
@@ -455,32 +455,42 @@ async function putFile(session, path, file) {
   await session.storage.putBytes(path, bytes);
 }
 
-function buildPaykitMethodPath(methodId = PAYKIT_ONCHAIN_METHOD_ID) {
+function buildPaykitMethodPath(methodId) {
   return `${PAYKIT_PATH_PREFIX}/${methodId}`;
 }
 
-async function syncPaykitEndpoint(session, enabled, bitcoinAddress = "") {
-  const paykitPath = buildPaykitMethodPath();
-  const supportedPath = `${PAYKIT_PATH_PREFIX}/supported.json`;
+function getPaykitBitcoinMethodId(bitcoinAddress = "") {
+  const normalized = String(bitcoinAddress || "").trim().toLowerCase();
+  if (normalized.startsWith("bc1p")) return PAYKIT_BITCOIN_METHOD_IDS.p2tr;
+  if (normalized.startsWith("bc1q")) {
+    return normalized.length > 50
+      ? PAYKIT_BITCOIN_METHOD_IDS.p2wsh
+      : PAYKIT_BITCOIN_METHOD_IDS.p2wpkh;
+  }
+  return "";
+}
 
-  if (enabled && bitcoinAddress.trim()) {
-    const method = {
-      method_id: PAYKIT_ONCHAIN_METHOD_ID,
-      endpoint: bitcoinAddress.trim(),
-      enabled: true,
-      updated_at: Date.now()
-    };
+function getManagedPaykitPaths() {
+  return Object.values(PAYKIT_BITCOIN_METHOD_IDS).map((methodId) =>
+    buildPaykitMethodPath(methodId)
+  );
+}
+
+async function syncPaykitEndpoint(session, enabled, bitcoinAddress = "") {
+  const trimmedAddress = bitcoinAddress.trim();
+  const methodId = getPaykitBitcoinMethodId(trimmedAddress);
+  const paykitPath = methodId ? buildPaykitMethodPath(methodId) : "";
+  const stalePaths = getManagedPaykitPaths().filter((path) => path !== paykitPath);
+
+  if (enabled && trimmedAddress && paykitPath) {
     await Promise.all([
-      putJson(session, paykitPath, method),
-      putJson(session, supportedPath, [method])
+      putJson(session, paykitPath, { value: trimmedAddress }),
+      ...stalePaths.map((path) => deletePath(session, path))
     ]);
     return;
   }
 
-  await Promise.all([
-    deletePath(session, paykitPath),
-    deletePath(session, supportedPath)
-  ]);
+  await Promise.all(getManagedPaykitPaths().map((path) => deletePath(session, path)));
 }
 
 function createPubkyAppProfile(draft) {
@@ -537,6 +547,10 @@ function validateDraft(draft) {
 
   if (draft.bitcoinAddress && draft.bitcoinAddress.trim().length > 120) {
     throw new Error("Bitcoin address must be 120 characters or fewer.");
+  }
+
+  if (draft.donateEnabled && draft.bitcoinAddress && !getPaykitBitcoinMethodId(draft.bitcoinAddress)) {
+    throw new Error("Use a bc1q or bc1p Bitcoin address for Paykit donations.");
   }
 }
 
