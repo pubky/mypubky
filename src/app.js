@@ -3,6 +3,7 @@ import {
   DEFAULT_BACKGROUNDS,
   HOMEPAGE_BRAND_ENDORSEMENT,
   HOMEPAGE_BRAND_MARK,
+  HOMEPAGE_FAVICON_MARK,
   HOMEPAGE_VISUAL,
   MAX_UPLOAD_BYTES,
   SOCIAL_PLATFORMS
@@ -38,6 +39,8 @@ import HOMEPAGE_SWIRL from "./assets/swirl.svg";
 import X_BRAND_MARK from "./assets/x.svg";
 
 const APP_VERSION = __APP_VERSION__;
+const HERO_MOTION_MODE = "loop"; // Set to "interactive" to restore pointer/scroll-driven hero motion.
+const HERO_LOOP_DURATION_SECONDS = 6;
 
 function icon(name) {
   const lucide = (body, attrs = "") => `
@@ -295,6 +298,7 @@ export class MyPubkyApp {
     this.confettiBurstEl = null;
     this.confettiTimer = 0;
     this.draggingLinkIndex = -1;
+    this.heroLoopStartedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
     this.heroMotion = {
       active: false,
       frame: 0,
@@ -365,7 +369,7 @@ export class MyPubkyApp {
   };
 
   handlePointerMove = (event) => {
-    if (this.shouldUseScrollDrivenHeroMotion()) return;
+    if (!this.shouldUseInteractiveHeroMotion() || this.shouldUseScrollDrivenHeroMotion()) return;
     this.heroMotion.x = event.clientX;
     this.heroMotion.y = event.clientY;
 
@@ -377,19 +381,19 @@ export class MyPubkyApp {
   };
 
   handlePointerDown = (event) => {
-    if (this.shouldUseScrollDrivenHeroMotion()) return;
+    if (!this.shouldUseInteractiveHeroMotion() || this.shouldUseScrollDrivenHeroMotion()) return;
     this.heroMotion.x = event.clientX;
     this.heroMotion.y = event.clientY;
     this.updateHeroVisualMotion();
   };
 
   handlePointerLeave = () => {
-    if (this.shouldUseScrollDrivenHeroMotion()) return;
+    if (!this.shouldUseInteractiveHeroMotion() || this.shouldUseScrollDrivenHeroMotion()) return;
     this.resetHeroVisualMotion();
   };
 
   handlePointerEnd = (event) => {
-    if (this.shouldUseScrollDrivenHeroMotion()) return;
+    if (!this.shouldUseInteractiveHeroMotion() || this.shouldUseScrollDrivenHeroMotion()) return;
     if (event.pointerType === "touch" || event.pointerType === "pen") {
       this.resetHeroVisualMotion();
     }
@@ -938,8 +942,22 @@ export class MyPubkyApp {
     return window.matchMedia("(max-width: 720px), (pointer: coarse)").matches;
   }
 
+  shouldUseInteractiveHeroMotion() {
+    return HERO_MOTION_MODE === "interactive";
+  }
+
   shouldUseScrollDrivenHeroMotion() {
-    return this.shouldUseAuthDeepLink();
+    return this.shouldUseInteractiveHeroMotion() && this.shouldUseAuthDeepLink();
+  }
+
+  getHeroLoopTimingAttributes() {
+    if (HERO_MOTION_MODE !== "loop") return "";
+
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const elapsedSeconds = Math.max(0, (now - this.heroLoopStartedAt) / 1000);
+    const cycleOffset = elapsedSeconds % HERO_LOOP_DURATION_SECONDS;
+
+    return ` style="--hero-loop-duration:${HERO_LOOP_DURATION_SECONDS}s;--hero-loop-delay:-${cycleOffset.toFixed(3)}s"`;
   }
 
   getWindowScrollProgress() {
@@ -1281,7 +1299,7 @@ export class MyPubkyApp {
         <section class="hero">
           <header class="home-header">
             <div class="brand-mark" aria-label="mypubky.com">
-              <img class="brand-mark__image" src="${HOMEPAGE_BRAND_MARK}" alt="" />
+              <img class="brand-mark__image" src="${HOMEPAGE_FAVICON_MARK}" alt="" />
               <span>mypubky.com</span>
             </div>
           </header>
@@ -1300,7 +1318,7 @@ export class MyPubkyApp {
                 </button>
               </div>
             </div>
-            <div class="hero__art">
+            <div class="${cn("hero__art", HERO_MOTION_MODE === "loop" && "hero__art--loop")}"${this.getHeroLoopTimingAttributes()}>
               <div class="hero__swirl" aria-hidden="true" style="background-image:url('${escapeHtml(HOMEPAGE_SWIRL)}')"></div>
               <div class="hero__demo" aria-hidden="true" style="background-image:url('${escapeHtml(HOMEPAGE_DEMO)}')"></div>
               <button

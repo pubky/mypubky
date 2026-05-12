@@ -31,6 +31,7 @@ export const PKARR_RELAYS = (import.meta.env.VITE_PKARR_RELAYS || "https://pkarr
   .filter(Boolean);
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 export const DEFAULT_AVATAR_PATH = new URL("../assets/avatar.png", import.meta.url).href;
+export const HOMEPAGE_FAVICON_MARK = new URL("../assets/favicon.png", import.meta.url).href;
 export const HOMEPAGE_BRAND_MARK = new URL("../assets/pubky.svg", import.meta.url).href;
 export const HOMEPAGE_VISUAL = new URL("../assets/uservisual.png", import.meta.url).href;
 export const HOMEPAGE_BRAND_ENDORSEMENT = new URL("../assets/brandendorsement.png", import.meta.url).href;

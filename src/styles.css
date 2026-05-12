@@ -273,7 +273,7 @@ video {
 .brand-mark {
   display: inline-flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.5rem;
   padding: 0;
   background: transparent;
   color: var(--text);
@@ -283,9 +283,10 @@ video {
 }
 
 .brand-mark__image {
-  width: 18px;
-  height: auto;
+  width: 48px;
+  height: 48px;
   flex: 0 0 auto;
+  object-fit: contain;
 }
 
 .hero__content {
@@ -485,6 +486,64 @@ video {
   transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms cubic-bezier(0.22, 1, 0.36, 1);
   pointer-events: none;
   will-change: transform;
+}
+
+.hero__art--loop .hero__swirl {
+  animation: hero-swirl-loop var(--hero-loop-duration, 6s) ease-in-out infinite;
+  animation-delay: var(--hero-loop-delay, 0s);
+}
+
+.hero__art--loop .hero__visual {
+  animation: hero-visual-loop var(--hero-loop-duration, 6s) ease-in-out infinite;
+  animation-delay: var(--hero-loop-delay, 0s);
+}
+
+.hero__art--loop .hero__demo {
+  animation: hero-demo-loop var(--hero-loop-duration, 6s) ease-in-out infinite;
+  animation-delay: var(--hero-loop-delay, 0s);
+}
+
+@keyframes hero-swirl-loop {
+  0%,
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1) rotate(0deg);
+  }
+
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(2) rotate(14deg);
+  }
+}
+
+@keyframes hero-visual-loop {
+  0%,
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+
+  50% {
+    transform: scale(1.1) rotate(-10deg);
+  }
+}
+
+@keyframes hero-demo-loop {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(0.22) rotate(0deg);
+  }
+
+  50% {
+    transform: translate(-50%, -50%) scale(2.22) rotate(10deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero__art--loop .hero__swirl,
+  .hero__art--loop .hero__visual,
+  .hero__art--loop .hero__demo {
+    animation: none;
+  }
 }
 
 .home-footer {
@@ -1799,6 +1858,11 @@ a.post-card {
 
 .dialog--auth .dialog__actions {
   margin-top: 0;
+}
+
+.dialog--auth .dialog__status + .dialog__actions,
+.dialog--auth .dialog__error + .dialog__actions {
+  margin-top: 1rem;
 }
 
 .dialog--auth .button--secondary {

@@ -491,6 +491,16 @@ function getListedPaykitMethodId(pubky, entry) {
   return /^[a-z0-9][a-z0-9._-]{0,63}$/.test(methodId) ? methodId : "";
 }
 
+async function cleanupPaykitPaths(session, paths = []) {
+  if (!paths.length) return;
+
+  const results = await Promise.allSettled(paths.map((path) => deletePath(session, path)));
+  const failures = results.filter((result) => result.status === "rejected");
+  if (failures.length) {
+    console.warn("Unable to clean up stale Paykit endpoints.", failures.map((result) => result.reason));
+  }
+}
+
 async function syncPaykitEndpoint(session, enabled, bitcoinAddress = "") {
   const trimmedAddress = bitcoinAddress.trim();
   const methodId = getPaykitBitcoinMethodId(trimmedAddress);
@@ -498,10 +508,8 @@ async function syncPaykitEndpoint(session, enabled, bitcoinAddress = "") {
   const stalePaths = getManagedPaykitPaths().filter((path) => path !== paykitPath);
 
   if (enabled && trimmedAddress && paykitPath) {
-    await Promise.all([
-      putJson(session, paykitPath, { value: trimmedAddress }),
-      ...stalePaths.map((path) => deletePath(session, path))
-    ]);
+    await putJson(session, paykitPath, { value: trimmedAddress });
+    await cleanupPaykitPaths(session, stalePaths);
     return;
   }
 
@@ -509,7 +517,7 @@ async function syncPaykitEndpoint(session, enabled, bitcoinAddress = "") {
     return;
   }
 
-  await Promise.all(getManagedPaykitPaths().map((path) => deletePath(session, path)));
+  await cleanupPaykitPaths(session, getManagedPaykitPaths());
 }
 
 function createPubkyAppProfile(draft) {
@@ -1277,8 +1285,7 @@ export async function saveProfileBundle(pubky, draft) {
   try {
     await Promise.all([
       putJson(session, PUBKY_PROFILE_PATH, pubkyAppProfile),
-      putJson(session, CARD_SETTINGS_PATH, cardSettings),
-      syncPaykitEndpoint(session, nextDraft.donateEnabled, nextDraft.bitcoinAddress)
+      putJson(session, CARD_SETTINGS_PATH, cardSettings)
     ]);
   } catch (error) {
     const statusCode = extractStatusCode(error);
@@ -1299,6 +1306,12 @@ export async function saveProfileBundle(pubky, draft) {
     }
 
     throw error;
+  }
+
+  try {
+    await syncPaykitEndpoint(session, nextDraft.donateEnabled, nextDraft.bitcoinAddress);
+  } catch (error) {
+    console.warn("Profile saved, but Paykit endpoint sync failed.", error);
   }
 
   if (typeof session?.export === "function") {
