@@ -459,14 +459,22 @@ function buildPaykitMethodPath(methodId) {
   return `${PAYKIT_PATH_PREFIX}/${methodId}`;
 }
 
+function getPaykitDirectoryPath() {
+  return `${PAYKIT_PATH_PREFIX}/`;
+}
+
 function getPaykitBitcoinMethodId(bitcoinAddress = "") {
   const normalized = String(bitcoinAddress || "").trim().toLowerCase();
-  if (normalized.startsWith("bc1p")) return PAYKIT_BITCOIN_METHOD_IDS.p2tr;
-  if (normalized.startsWith("bc1q")) {
-    return normalized.length > 50
-      ? PAYKIT_BITCOIN_METHOD_IDS.p2wsh
-      : PAYKIT_BITCOIN_METHOD_IDS.p2wpkh;
-  }
+  if (normalized.startsWith("bc1p")) return PAYKIT_BITCOIN_METHOD_IDS.bitcoinP2tr;
+  if (normalized.startsWith("bc1q")) return PAYKIT_BITCOIN_METHOD_IDS.bitcoinP2wpkh;
+  if (normalized.startsWith("tb1p")) return PAYKIT_BITCOIN_METHOD_IDS.testnetP2tr;
+  if (normalized.startsWith("tb1q")) return PAYKIT_BITCOIN_METHOD_IDS.testnetP2wpkh;
+  if (normalized.startsWith("bcrt1p")) return PAYKIT_BITCOIN_METHOD_IDS.regtestP2tr;
+  if (normalized.startsWith("bcrt1q")) return PAYKIT_BITCOIN_METHOD_IDS.regtestP2wpkh;
+  if (normalized.startsWith("3")) return PAYKIT_BITCOIN_METHOD_IDS.bitcoinP2sh;
+  if (normalized.startsWith("1")) return PAYKIT_BITCOIN_METHOD_IDS.bitcoinP2pkh;
+  if (normalized.startsWith("2")) return PAYKIT_BITCOIN_METHOD_IDS.testnetP2sh;
+  if (normalized.startsWith("m") || normalized.startsWith("n")) return PAYKIT_BITCOIN_METHOD_IDS.testnetP2pkh;
   return "";
 }
 
@@ -474,6 +482,13 @@ function getManagedPaykitPaths() {
   return Object.values(PAYKIT_BITCOIN_METHOD_IDS).map((methodId) =>
     buildPaykitMethodPath(methodId)
   );
+}
+
+function getListedPaykitMethodId(pubky, entry) {
+  const address = normalizeListedAddress(pubky, entry).split(/[?#]/)[0];
+  const methodId = address.split("/").filter(Boolean).pop() || "";
+  if (methodId === "private") return "";
+  return /^[a-z0-9][a-z0-9._-]{0,63}$/.test(methodId) ? methodId : "";
 }
 
 async function syncPaykitEndpoint(session, enabled, bitcoinAddress = "") {
@@ -487,6 +502,10 @@ async function syncPaykitEndpoint(session, enabled, bitcoinAddress = "") {
       putJson(session, paykitPath, { value: trimmedAddress }),
       ...stalePaths.map((path) => deletePath(session, path))
     ]);
+    return;
+  }
+
+  if (enabled) {
     return;
   }
 
@@ -550,7 +569,7 @@ function validateDraft(draft) {
   }
 
   if (draft.donateEnabled && draft.bitcoinAddress && !getPaykitBitcoinMethodId(draft.bitcoinAddress)) {
-    throw new Error("Use a bc1q or bc1p Bitcoin address for Paykit donations.");
+    throw new Error("Use a supported Bitcoin mainnet, testnet, or regtest address for Paykit donations.");
   }
 }
 
@@ -991,6 +1010,25 @@ async function loadLatestPostsFromHomeserver(sdk, pubky) {
   return posts;
 }
 
+async function loadPublicPaykitMethods(sdk, pubky) {
+  const paykitDirectoryPath = getPaykitDirectoryPath();
+  let listedMethods = [];
+
+  try {
+    listedMethods = await sdk.publicStorage.list(pubkyAddress(pubky, paykitDirectoryPath), null, false, 20, true);
+  } catch {
+    try {
+      listedMethods = await sdk.publicStorage.list(pubkyUri(pubky, paykitDirectoryPath), null, false, 20, true);
+    } catch {
+      listedMethods = [];
+    }
+  }
+
+  if (!Array.isArray(listedMethods) || !listedMethods.length) return [];
+
+  return [...new Set(listedMethods.map((entry) => getListedPaykitMethodId(pubky, entry)).filter(Boolean))];
+}
+
 async function loadLatestPosts(sdk, pubky) {
   const nexusPosts = await loadLatestPostsFromNexus(pubky);
   if (nexusPosts.length) return nexusPosts.slice(0, 3);
@@ -1072,11 +1110,12 @@ export async function loadProfileBundle(pubky) {
       ])
     : [null, null];
 
-  const [publicPubkyProfile, publicCardSettings, nexusUserView, latestPosts] = await Promise.all([
+  const [publicPubkyProfile, publicCardSettings, nexusUserView, latestPosts, paykitMethods] = await Promise.all([
     fetchJsonPublicByPath(sdk, pubky, PUBKY_PROFILE_PATH),
     fetchJsonPublicByPath(sdk, pubky, CARD_SETTINGS_PATH),
     loadNexusUserView(pubky),
-    loadLatestPosts(sdk, pubky)
+    loadLatestPosts(sdk, pubky),
+    loadPublicPaykitMethods(sdk, pubky)
   ]);
 
   const tags = await loadProfileTags(pubky, nexusUserView);
@@ -1089,6 +1128,9 @@ export async function loadProfileBundle(pubky) {
   const cardSettings = sessionCardSettings || publicCardSettings;
 
   const baseBackground = getBackgroundById(cardSettings?.backgroundId);
+  const hasDonationPreference = Boolean(
+    cardSettings && Object.prototype.hasOwnProperty.call(cardSettings, "donateEnabled")
+  );
   const merged = mergeProfileData(
     pubkyProfile,
     {
@@ -1096,6 +1138,9 @@ export async function loadProfileBundle(pubky) {
       pubky,
       latestPosts,
       tags,
+      paykitMethods,
+      donateEnabled: hasDonationPreference ? cardSettings.donateEnabled : true,
+      donateEndpoint: cardSettings?.donateEndpoint || pubky,
       backgroundUrl: cardSettings?.backgroundUrl || baseBackground.src,
       backgroundType: cardSettings?.backgroundType || baseBackground.type
     }

@@ -5,9 +5,22 @@ export const FILES_PATH = `/pub/${APP_NAME}/files`;
 export const PUBKY_POSTS_PATH = "/pub/pubky.app/posts/";
 export const PAYKIT_PATH_PREFIX = "/pub/paykit/v0";
 export const PAYKIT_BITCOIN_METHOD_IDS = {
-  p2wpkh: "btc-bitcoin-p2wpkh",
-  p2wsh: "btc-bitcoin-p2wsh",
-  p2tr: "btc-bitcoin-p2tr"
+  bitcoinP2tr: "btc-bitcoin-p2tr",
+  bitcoinP2wpkh: "btc-bitcoin-p2wpkh",
+  bitcoinP2sh: "btc-bitcoin-p2sh",
+  bitcoinP2pkh: "btc-bitcoin-p2pkh",
+  testnetP2tr: "btc-testnet-p2tr",
+  testnetP2wpkh: "btc-testnet-p2wpkh",
+  testnetP2sh: "btc-testnet-p2sh",
+  testnetP2pkh: "btc-testnet-p2pkh",
+  signetP2tr: "btc-signet-p2tr",
+  signetP2wpkh: "btc-signet-p2wpkh",
+  signetP2sh: "btc-signet-p2sh",
+  signetP2pkh: "btc-signet-p2pkh",
+  regtestP2wpkh: "btc-regtest-p2wpkh",
+  regtestP2tr: "btc-regtest-p2tr",
+  regtestP2sh: "btc-regtest-p2sh",
+  regtestP2pkh: "btc-regtest-p2pkh"
 };
 export const RELAY_URL = "https://httprelay.pubky.app/inbox/";
 export const NEXUS_URL = import.meta.env.VITE_NEXUS_URL || "https://nexus.pubky.app";

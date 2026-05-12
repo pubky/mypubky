@@ -245,6 +245,7 @@ export function mergeProfileData(pubkyProfile = {}, cardProfile = {}) {
     donateEnabled: cardProfile.donateEnabled ?? false,
     donateEndpoint: cardProfile.donateEndpoint || "",
     bitcoinAddress: cardProfile.bitcoinAddress || "",
+    paykitMethods: Array.isArray(cardProfile.paykitMethods) ? cardProfile.paykitMethods : [],
     latestPosts: Array.isArray(cardProfile.latestPosts) ? cardProfile.latestPosts : [],
     tags: cardProfile.tags || []
   };
