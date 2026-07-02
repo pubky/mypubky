@@ -428,6 +428,10 @@ function buildNexusUserTagsUrl(pubky) {
   return url.toString();
 }
 
+function buildNexusUserDetailsUrl(pubky) {
+  return `${NEXUS_URL}/v0/user/${encodeURIComponent(pubky)}/details`;
+}
+
 function buildNexusAuthorPostsUrl(pubky) {
   const url = new URL(`${NEXUS_URL}/v0/stream/posts/keys`);
   url.searchParams.set("source", "author");
@@ -989,6 +993,38 @@ async function loadProfileTags(pubky, nexusUserView = null) {
   }
 }
 
+function extractPubkyMentionIds(value = "") {
+  const ids = new Set();
+  const mentionPattern = /(^|\s)((?:pk:|pubky)([a-z0-9]{52}))/g;
+
+  for (const match of String(value || "").matchAll(mentionPattern)) {
+    ids.add(match[3]);
+    if (ids.size >= 8) break;
+  }
+
+  return [...ids];
+}
+
+async function loadProfileBioMentions(bio = "") {
+  const mentionIds = extractPubkyMentionIds(bio);
+  if (!mentionIds.length) return {};
+
+  const entries = await Promise.all(
+    mentionIds.map(async (pubky) => {
+      try {
+        const details = await fetchRemoteJson(buildNexusUserDetailsUrl(pubky));
+        const name = String(details?.name || "").trim();
+        return [pubky, name ? { name } : null];
+      } catch (error) {
+        console.warn(`Unable to load profile mention ${pubky}.`, error);
+        return [pubky, null];
+      }
+    })
+  );
+
+  return Object.fromEntries(entries.filter(([, details]) => details));
+}
+
 function extractPostIdFromUri(uri = "") {
   return uri.split("/").filter(Boolean).pop() || "";
 }
@@ -1227,6 +1263,7 @@ export async function loadProfileBundle(pubky) {
     ...(publicPubkyProfile || {}),
     ...(sessionPubkyProfile || {})
   };
+  const bioMentions = await loadProfileBioMentions(pubkyProfile.bio);
   const cardSettings = sessionCardSettings || publicCardSettings;
 
   const baseBackground = getBackgroundById(cardSettings?.backgroundId);
@@ -1249,6 +1286,7 @@ export async function loadProfileBundle(pubky) {
   );
 
   merged.pubky = pubky;
+  merged.bioMentions = bioMentions;
   merged.latestPosts = merged.showLatestPost ? latestPosts : [];
   merged.tags = merged.showTags ? tags : [];
   const resolvedAvatarUrl = await resolvePubkyMediaUrl(sdk, merged.image, pubky).catch(() =>

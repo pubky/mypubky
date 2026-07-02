@@ -246,6 +246,33 @@ function getPostPreview(post) {
   return null;
 }
 
+function renderProfileBio(bio = "", mentions = {}) {
+  const text = String(bio || "A portable profile for the freedom web.");
+  const mentionPattern = /(^|\s)((?:pk:|pubky)([a-z0-9]{52}))/g;
+  let html = "";
+  let lastIndex = 0;
+  let hasMention = false;
+
+  for (const match of text.matchAll(mentionPattern)) {
+    const leading = match[1] || "";
+    const token = match[2];
+    const pubky = match[3];
+    const tokenStart = (match.index || 0) + leading.length;
+    const tokenEnd = tokenStart + token.length;
+    const mentionName = String(mentions?.[pubky]?.name || "").trim();
+    const mentionLabel = mentionName ? `@${mentionName}` : `@${shortenPubky(pubky)}`;
+
+    html += escapeHtml(text.slice(lastIndex, tokenStart));
+    html += `<a class="profile-card__mention" href="https://pubky.app/profile/${escapeHtml(pubky)}" target="_blank" rel="noreferrer">${escapeHtml(mentionLabel)}</a>`;
+    lastIndex = tokenEnd;
+    hasMention = true;
+  }
+
+  if (!hasMention) return escapeHtml(text);
+
+  return `${html}${escapeHtml(text.slice(lastIndex))}`;
+}
+
 function getTagColor(label = "") {
   const normalized = String(label || "").trim();
   const lowerLabel = normalized.toLowerCase();
@@ -330,6 +357,7 @@ export class MyPubkyApp {
       loading: false,
       routePubky: "",
       sessionPubky: "",
+      sessionReady: false,
       profile: null,
       draft: null,
       modal: null,
@@ -347,6 +375,7 @@ export class MyPubkyApp {
 
   async init() {
     this.root.addEventListener("click", this.handleClick);
+    this.root.addEventListener("keydown", this.handleKeyDown);
     this.root.addEventListener("input", this.handleInput);
     this.root.addEventListener("change", this.handleChange);
     this.root.addEventListener("submit", this.handleSubmit);
@@ -365,6 +394,7 @@ export class MyPubkyApp {
 
     const restored = await restoreSession();
     this.state.sessionPubky = restored.pubky || "";
+    this.state.sessionReady = Boolean(restored.pubky && restored.hasRequiredCapabilities);
     this.state.sessionDiagnostic = restored.diagnostic || null;
     this.state.booting = false;
     await this.syncRoute();
@@ -616,13 +646,9 @@ export class MyPubkyApp {
 
     const maxFontSize = Number.parseFloat(window.getComputedStyle(name).fontSize);
     const minFontSize = Number.parseFloat(window.getComputedStyle(name).getPropertyValue("--profile-name-min-size")) || 32;
-    const maxLines = Number.parseInt(name.dataset.maxLines || "3", 10);
 
     const fits = () => {
-      const computed = window.getComputedStyle(name);
-      const lineHeight = Number.parseFloat(computed.lineHeight) || Number.parseFloat(computed.fontSize);
-      const maxHeight = lineHeight * maxLines;
-      return name.scrollWidth <= name.clientWidth + 1 && name.scrollHeight <= maxHeight + 1;
+      return name.scrollWidth <= name.clientWidth + 1;
     };
 
     if (fits()) return;
@@ -678,6 +704,14 @@ export class MyPubkyApp {
             mediaType: button.dataset.mediaType || "image"
           });
           break;
+        case "open-post":
+          {
+            const postUrl = sanitizeBrowserUrl(button.dataset.url || "");
+            if (postUrl) {
+              window.open(postUrl, "_blank", "noopener");
+            }
+          }
+          break;
         case "close-modal":
           this.closeModal();
           break;
@@ -722,6 +756,7 @@ export class MyPubkyApp {
             const currentSessionPubky = this.state.sessionPubky;
             await signOut();
             this.state.sessionPubky = "";
+            this.state.sessionReady = false;
             this.state.activePanel = "";
             this.setNotice("Signed out.");
             if (this.state.routePubky === currentSessionPubky) {
@@ -765,12 +800,28 @@ export class MyPubkyApp {
         case "go-home":
           this.navigate("/");
           break;
+        case "go-session-profile":
+          if (this.state.sessionPubky) {
+            this.navigate(`/profile/${this.state.sessionPubky}`);
+          }
+          break;
         default:
           break;
       }
     } catch (error) {
       this.setError(error.message || "Something went wrong.");
     }
+  };
+
+  handleKeyDown = (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    if (event.target.closest("button, a, input, textarea, select")) return;
+
+    const card = event.target.closest('.post-card[data-action="open-post"]');
+    if (!card) return;
+
+    event.preventDefault();
+    card.click();
   };
 
   handleInput = (event) => {
@@ -1059,6 +1110,7 @@ export class MyPubkyApp {
       const result = await waitForAuth(approvalPromise);
       if (this.state.auth?.id !== requestId) return;
       this.state.sessionPubky = result.pubky;
+      this.state.sessionReady = true;
       this.state.sessionDiagnostic = null;
       this.closeModal({ cancelAuth: false });
       const pendingAction = this.state.pendingAction;
@@ -1186,7 +1238,11 @@ export class MyPubkyApp {
   }
 
   isOwnProfile() {
-    return Boolean(this.state.routePubky && this.state.sessionPubky && this.state.routePubky === this.state.sessionPubky);
+    return Boolean(this.hasUsableSession() && this.state.routePubky === this.state.sessionPubky);
+  }
+
+  hasUsableSession() {
+    return Boolean(this.state.sessionPubky && this.state.sessionReady);
   }
 
   currentProfileView() {
@@ -1411,7 +1467,7 @@ export class MyPubkyApp {
   renderProfile(profile) {
     const current = profile || {};
     const own = this.isOwnProfile();
-    const signedOut = !this.state.sessionPubky;
+    const signedOut = !this.hasUsableSession();
     const editablePanelOpen = this.state.activePanel === "edit" || this.state.activePanel === "style";
     const donateOpen = this.state.activePanel === "donate";
     const shareOpen = this.state.activePanel === "share";
@@ -1443,9 +1499,7 @@ export class MyPubkyApp {
           <div class="stage-overlay"></div>
           ${own
             ? (editablePanelOpen ? this.renderPanelNav() : this.renderOwnerToolbar())
-            : signedOut
-              ? this.renderPublicProfileToolbar()
-              : ""}
+            : this.renderPublicProfileToolbar({ signedOut })}
           <div class="profile-stack profile-stack--${escapeHtml(current.cardPosition || "center")}">
             <div class="${cn("profile-column", `profile-column--card-background-${cardBackgroundMode}`)}">
             <div class="${cn("profile-card-shell", cardBackOpen && "profile-card-shell--panel")}">
@@ -1473,8 +1527,8 @@ export class MyPubkyApp {
                           <button class="avatar avatar--display" type="button" ${own ? 'data-action="trigger-avatar-upload"' : ""} aria-label="Profile avatar">
                             <img src="${escapeHtml(avatarUrl)}" data-fallback-src="${escapeHtml(DEFAULT_AVATAR_PATH)}" alt="${escapeHtml(current.name || "Profile avatar")}" />
                           </button>
-                          <h2 class="profile-card__name" data-max-lines="3">${escapeHtml(current.name || "Unnamed")}</h2>
-                          <p class="profile-card__bio">${escapeHtml(current.bio || "A portable profile for the freedom web.")}</p>
+                          <h2 class="profile-card__name">${escapeHtml(current.name || "Unnamed")}</h2>
+                          <p class="profile-card__bio">${renderProfileBio(current.bio, current.bioMentions)}</p>
                           ${showTags ? `<div class="tag-row">${current.tags.map((tag) => renderTagPill(tag)).join("")}</div>` : ""}
                         </div>
                         <div class="chip-row">
@@ -1607,11 +1661,18 @@ export class MyPubkyApp {
     `;
   }
 
-  renderPublicProfileToolbar() {
+  renderPublicProfileToolbar({ signedOut = true } = {}) {
+    const profileButton = signedOut
+      ? '<button class="button button--toolbar button--toolbar-icon" type="button" data-action="open-brand" aria-label="About mypubky.com">?</button>'
+      : `<button class="button button--toolbar button--toolbar-icon" type="button" data-action="go-session-profile" aria-label="Open your profile">${icon("square-user-round")}</button>`;
+    const authButton = signedOut
+      ? '<button class="button button--toolbar" type="button" data-action="open-auth" data-mode="create">Sign in</button>'
+      : '<button class="button button--toolbar" type="button" data-action="sign-out">Sign out</button>';
+
     return `
-      <div class="owner-toolbar">
-        <button class="button button--toolbar button--toolbar-icon" type="button" data-action="open-brand" aria-label="About mypubky.com">?</button>
-        <button class="button button--toolbar" type="button" data-action="open-auth" data-mode="create">Sign in</button>
+      <div class="owner-toolbar owner-toolbar--public">
+        ${profileButton}
+        ${authButton}
       </div>
     `;
   }
@@ -1650,8 +1711,8 @@ export class MyPubkyApp {
               : "";
 
         return `
-          <article class="${cn("post-card", previewSource && "post-card--has-preview")}">
-            <a class="post-card__header" href="${escapeHtml(postUrl)}" target="_blank" rel="noreferrer">
+          <article class="${cn("post-card", previewSource && "post-card--has-preview")}" role="link" tabindex="0" data-action="open-post" data-url="${escapeHtml(postUrl)}" aria-label="Open post: ${escapeHtml(post?.content || "Untitled post")}">
+            <div class="post-card__header">
               <div class="post-card__avatar">
                 <img src="${escapeHtml(safeAvatarUrl)}" data-fallback-src="${escapeHtml(DEFAULT_AVATAR_PATH)}" alt="" />
               </div>
@@ -1662,7 +1723,7 @@ export class MyPubkyApp {
                 <time class="post-card__time">${icon("clock")}<span>${escapeHtml(post?.relativeTime || formatRelativeTime(Date.now()))}</span></time>
                 ${primaryTag ? renderTagPill(primaryTag, { className: "tag-pill--post", count: tagCount }) : ""}
               </div>
-            </a>
+            </div>
             ${previewMarkup}
           </article>
         `;

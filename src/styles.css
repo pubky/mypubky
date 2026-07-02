@@ -636,6 +636,10 @@ video {
   gap: 12px;
 }
 
+.owner-toolbar--public {
+  z-index: 8;
+}
+
 .profile-stack {
   position: relative;
   z-index: 2;
@@ -875,16 +879,17 @@ video {
 
 .profile-card__name {
   --profile-name-font-size: 5rem;
-  --profile-name-min-size: 34px;
+  --profile-name-min-size: 20px;
   width: 100%;
   max-width: 100%;
   margin: 0;
   font-size: var(--profile-name-font-size);
   line-height: 0.92;
-  letter-spacing: -0.05em;
+  letter-spacing: 0;
   text-align: center;
-  overflow-wrap: anywhere;
-  text-wrap: balance;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
 }
 
 .profile-card__bio {
@@ -894,6 +899,15 @@ video {
   line-height: 1.35;
   color: var(--soft);
   padding-inline: 24px;
+}
+
+.profile-card__mention {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.profile-card__mention:hover {
+  color: var(--text);
 }
 
 .chip-row,
@@ -988,6 +1002,7 @@ video {
 }
 
 .post-card {
+  position: relative;
   width: 100%;
   min-height: 88px;
   background: rgba(8, 8, 10, 0.96);
@@ -997,11 +1012,17 @@ video {
   flex-direction: column;
   gap: 16px;
   box-shadow: var(--shadow-card);
-  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1), background 180ms ease;
-  transform-origin: center center;
+  overflow: hidden;
+  transition: background 100ms ease, filter 100ms ease;
+}
+
+.post-card[data-action="open-post"] {
+  cursor: pointer;
 }
 
 .post-card__header {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: 48px minmax(0, 1fr) auto;
   align-items: center;
@@ -1036,20 +1057,20 @@ video {
 
 .post-card:hover,
 .post-card:focus-visible {
-  transform: scale(1.018);
-  box-shadow: 0 24px 56px rgba(5, 5, 10, 0.32);
-  background: rgba(12, 12, 15, 0.98);
+  background: rgba(18, 18, 22, 0.98);
+  filter: brightness(1.06);
 }
 
 .profile-column--card-background-blur .post-card:hover,
 .profile-column--card-background-blur .post-card:focus-visible {
-  background: rgba(12, 12, 15, 0.56);
-  box-shadow: 0 24px 56px rgba(5, 5, 10, 0.32);
+  background: rgba(22, 22, 27, 0.62);
+  filter: brightness(1.06);
 }
 
 .profile-column--card-background-clear .post-card:hover,
 .profile-column--card-background-clear .post-card:focus-visible {
   background: transparent;
+  filter: brightness(1.06);
   box-shadow: none;
 }
 
@@ -1200,6 +1221,7 @@ video {
 
 .post-card__preview {
   position: relative;
+  z-index: 1;
   display: block;
   width: 100%;
   aspect-ratio: 16 / 9;
@@ -2196,7 +2218,7 @@ video {
 
   .profile-card__name {
     --profile-name-font-size: 4rem;
-    --profile-name-min-size: 30px;
+    --profile-name-min-size: 18px;
   }
 
   .profile-card__bio {
