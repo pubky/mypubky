@@ -401,6 +401,21 @@ async function fetchRemoteJson(url) {
   return response.json();
 }
 
+async function fetchRemoteJsonPost(url, payload) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to load ${url}`);
+  }
+  return response.json();
+}
+
 function buildNexusUserViewUrl(pubky) {
   const url = new URL(`${NEXUS_URL}/v0/user/${encodeURIComponent(pubky)}`);
   url.searchParams.set("depth", "1");
@@ -424,6 +439,10 @@ function buildNexusAuthorPostsUrl(pubky) {
 
 function buildNexusPostUrl(authorPubky, postId) {
   return `${NEXUS_URL}/v0/post/${encodeURIComponent(authorPubky)}/${encodeURIComponent(postId)}`;
+}
+
+function buildNexusFilesByIdsUrl() {
+  return `${NEXUS_URL}/v0/files/by_ids`;
 }
 
 async function fetchJsonSessionByPath(session, path) {
@@ -791,6 +810,75 @@ function buildCdnAvatarUrl(pubky = "") {
   return `${CDN_URL}/avatar/${encodeURIComponent(pubky)}`;
 }
 
+function parseMetadataUrls(urls) {
+  if (!urls) return {};
+  if (typeof urls === "string") {
+    try {
+      return JSON.parse(urls) || {};
+    } catch {
+      return {};
+    }
+  }
+  return typeof urls === "object" ? urls : {};
+}
+
+function normalizeNexusFileUrl(url = "") {
+  const trimmed = String(url || "").trim();
+  if (!trimmed) return "";
+  if (
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("data:") ||
+    trimmed.startsWith("blob:") ||
+    trimmed.startsWith("/")
+  ) {
+    return trimmed;
+  }
+
+  const normalizedPath = trimmed.replace(/^\/+/, "");
+  return `${CDN_URL}/${normalizedPath.startsWith("files/") ? normalizedPath : `files/${normalizedPath}`}`;
+}
+
+function normalizeNexusFileMetadata(file) {
+  if (!file) return null;
+
+  const urls = parseMetadataUrls(file.urls);
+  const contentType = String(file.content_type || file.contentType || file.type || "").toLowerCase();
+  const mainUrl = normalizeNexusFileUrl(urls.main);
+  const feedUrl = normalizeNexusFileUrl(urls.feed);
+  const smallUrl = normalizeNexusFileUrl(urls.small);
+  const source = contentType === "image/gif"
+    ? mainUrl || feedUrl || smallUrl
+    : contentType.startsWith("image/")
+      ? feedUrl || mainUrl || smallUrl
+      : mainUrl || feedUrl || smallUrl;
+
+  if (!source) return null;
+
+  return {
+    source,
+    type: contentType.startsWith("image/")
+      ? "image"
+      : contentType.startsWith("video/")
+        ? "video"
+        : contentType,
+    name: String(file.name || "").trim(),
+    urls: {
+      main: mainUrl,
+      feed: feedUrl,
+      small: smallUrl
+    }
+  };
+}
+
+async function fetchNexusFileMetadata(fileUris = []) {
+  const uris = [...new Set(fileUris.map((uri) => String(uri || "").trim()).filter(Boolean))];
+  if (!uris.length) return [];
+
+  const files = await fetchRemoteJsonPost(buildNexusFilesByIdsUrl(), { uris });
+  return Array.isArray(files) ? files : [];
+}
+
 async function loadMediaObjectUrl(sdk, source, ownerPubky = "") {
   const address = normalizePublicStorageAddress(source, ownerPubky);
   if (!address) return "";
@@ -804,7 +892,7 @@ async function loadMediaObjectUrl(sdk, source, ownerPubky = "") {
   return URL.createObjectURL(blob);
 }
 
-function fallbackMediaSource(source = "", ownerPubky = "") {
+function fallbackMediaSource(source = "", ownerPubky = "", variant = "main") {
   if (!source) return "";
   if (isDirectMediaUrl(source)) {
     return source;
@@ -812,7 +900,7 @@ function fallbackMediaSource(source = "", ownerPubky = "") {
 
   const normalizedAddress = normalizePublicStorageAddress(source, ownerPubky);
   if (normalizedAddress) {
-    const cdnFileUrl = buildCdnFileUrl(source, ownerPubky);
+    const cdnFileUrl = buildCdnFileUrl(source, ownerPubky, variant);
     if (cdnFileUrl) {
       return cdnFileUrl;
     }
@@ -827,7 +915,7 @@ function fallbackMediaSource(source = "", ownerPubky = "") {
   return "";
 }
 
-async function resolvePubkyMediaUrl(sdk, source, ownerPubky = "") {
+async function resolvePubkyMediaUrl(sdk, source, ownerPubky = "", variant = "main") {
   if (!source) return "";
   if (isDirectMediaUrl(source)) {
     return source;
@@ -840,16 +928,16 @@ async function resolvePubkyMediaUrl(sdk, source, ownerPubky = "") {
     // Fall through to resolver-based fallback.
   }
 
-  const cdnFileUrl = buildCdnFileUrl(source, ownerPubky);
+  const cdnFileUrl = buildCdnFileUrl(source, ownerPubky, variant);
   if (cdnFileUrl) {
     return cdnFileUrl;
   }
 
   try {
-    const address = normalizePublicStorageAddress(source, ownerPubky) || fallbackMediaSource(source, ownerPubky);
+    const address = normalizePublicStorageAddress(source, ownerPubky) || fallbackMediaSource(source, ownerPubky, variant);
     return resolvePubky(address);
   } catch {
-    return fallbackMediaSource(source, ownerPubky);
+    return fallbackMediaSource(source, ownerPubky, variant);
   }
 }
 
@@ -922,6 +1010,11 @@ function normalizeLatestPost(authorPubky, payload) {
   const details = payload?.details || payload || {};
   const content = String(details.content || "").trim();
   const attachments = Array.isArray(details.attachments) ? details.attachments.filter(Boolean) : [];
+  const attachmentsMetadata = Array.isArray(payload?.attachments_metadata)
+    ? payload.attachments_metadata
+    : Array.isArray(payload?.attachmentsMetadata)
+      ? payload.attachmentsMetadata
+      : [];
 
   if (!content && !attachments.length) {
     return null;
@@ -937,7 +1030,8 @@ function normalizeLatestPost(authorPubky, payload) {
     authorPubkyFull: authorPubky,
     authorPubky: shortenPubky(authorPubky),
     indexedAt: details.indexed_at || 0,
-    tags: Array.isArray(payload?.tags) ? payload.tags : []
+    tags: Array.isArray(payload?.tags) ? payload.tags : [],
+    attachmentsMetadata
   };
 }
 
@@ -1169,23 +1263,54 @@ export async function loadProfileBundle(pubky) {
   if (Array.isArray(merged.latestPosts)) {
     merged.latestPosts = await Promise.all(
       merged.latestPosts.map(async (post) => {
+        const attachmentSources = Array.isArray(post.attachments)
+          ? post.attachments.map((attachment) => getAttachmentSource(attachment)).filter(Boolean)
+          : [];
+        const inlineMetadata = Array.isArray(post.attachmentsMetadata) ? post.attachmentsMetadata : [];
+        const inlineMetadataByUri = new Map(
+          inlineMetadata
+            .map((file) => [String(file?.uri || "").trim(), file])
+            .filter(([uri]) => uri)
+        );
+        const missingMetadataSources = attachmentSources.filter((source) => !inlineMetadataByUri.has(source));
+        const fetchedMetadata = missingMetadataSources.length
+          ? await fetchNexusFileMetadata(missingMetadataSources).catch((error) => {
+              console.warn("Unable to load Nexus file metadata for latest post attachments.", error);
+              return [];
+            })
+          : [];
+        const metadataByUri = new Map(inlineMetadataByUri);
+
+        for (const file of fetchedMetadata) {
+          const uri = String(file?.uri || "").trim();
+          if (uri) metadataByUri.set(uri, file);
+        }
+
         const resolvedAttachments = post.attachments?.length
           ? (await Promise.all(
               post.attachments.map((attachment) =>
                 (async () => {
                   const ownerPubky = post.authorPubkyFull || pubky;
                   const source = getAttachmentSource(attachment);
-                  const type = inferAttachmentType(attachment, source);
+                  const metadataAttachment = normalizeNexusFileMetadata(metadataByUri.get(source));
+                  if (metadataAttachment) {
+                    return metadataAttachment;
+                  }
+
+                  const postKind = String(post.kind || "").toLowerCase();
+                  const fallbackType = postKind === "image" || postKind === "video" ? postKind : "";
+                  const type = inferAttachmentType(attachment, source) || fallbackType;
+                  const mediaVariant = type === "image" ? "feed" : "main";
                   if (!source) {
                     return { source: "", type };
                   }
 
-                  const resolvedSource = await resolvePubkyMediaUrl(sdk, source, ownerPubky).catch(() =>
-                    fallbackMediaSource(source, ownerPubky)
+                  const resolvedSource = await resolvePubkyMediaUrl(sdk, source, ownerPubky, mediaVariant).catch(() =>
+                    fallbackMediaSource(source, ownerPubky, mediaVariant)
                   );
 
                   return {
-                    source: resolvedSource || fallbackMediaSource(source, ownerPubky),
+                    source: resolvedSource || fallbackMediaSource(source, ownerPubky, mediaVariant),
                     type
                   };
                 })()

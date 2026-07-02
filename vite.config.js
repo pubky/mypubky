@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
+import packageJson from "./package.json" with { type: "json" };
 
-const appVersion = process.env.npm_package_version;
+const appVersion = process.env.npm_package_version || packageJson.version;
 
 export default defineConfig({
   define: {

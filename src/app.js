@@ -78,12 +78,12 @@ function icon(name) {
       lucide('<path d="m16 17 5-5-5-5" /><path d="M21 12H9" /><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />'),
     signin:
       lucide('<path d="M15 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3" /><path d="M10 17l5-5-5-5" /><path d="M15 12H4" />'),
+    "key-round":
+      lucide('<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z" /><circle cx="16.5" cy="7.5" r=".5" fill="currentColor" />'),
     close:
       lucide('<path d="M18 6 6 18" /><path d="m6 6 12 12" />'),
     plus:
       lucide('<path d="M5 12h14" /><path d="M12 5v14" />'),
-    create:
-      lucide('<path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" /><circle cx="9.5" cy="7" r="4" /><path d="M19 8v6" /><path d="M16 11h6" />'),
     "file-text":
       lucide('<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M10 9H8" /><path d="M16 13H8" /><path d="M16 17H8" />'),
     trash:
@@ -139,6 +139,18 @@ function buildPaykitQrValue(pubky = "") {
 function buildBitcoinQrValue(address = "") {
   const normalized = String(address || "").trim();
   return normalized ? `bitcoin:${normalized}` : "";
+}
+
+function getPaymentAvailability(profile = {}) {
+  const hasPaykitMethods = Array.isArray(profile.paykitMethods) && profile.paykitMethods.length > 0;
+  const hasBitcoinAddress = Boolean(String(profile.bitcoinAddress || "").trim());
+  const canDonate = Boolean(profile.donateEnabled && (hasPaykitMethods || hasBitcoinAddress));
+
+  return {
+    canDonate,
+    hasPaykitMethods,
+    hasBitcoinAddress
+  };
 }
 
 function extractPostId(post = {}) {
@@ -312,6 +324,7 @@ export class MyPubkyApp {
       targetY: 0,
       frame: 0
     };
+    this.profileNameFrame = 0;
     this.state = {
       booting: true,
       loading: false,
@@ -348,6 +361,7 @@ export class MyPubkyApp {
     this.root.addEventListener("pointercancel", this.handlePointerEnd);
     window.addEventListener("popstate", this.handleRouteChange);
     window.addEventListener("scroll", this.handleWindowScroll, { passive: true });
+    window.addEventListener("resize", this.handleWindowResize, { passive: true });
 
     const restored = await restoreSession();
     this.state.sessionPubky = restored.pubky || "";
@@ -366,6 +380,10 @@ export class MyPubkyApp {
     if (this.shouldUseScrollDrivenHeroMotion()) {
       this.updateHeroVisualMotionFromProgress(progress);
     }
+  };
+
+  handleWindowResize = () => {
+    this.queueProfileNameFit();
   };
 
   handlePointerMove = (event) => {
@@ -579,6 +597,53 @@ export class MyPubkyApp {
     this.applyProfileParallax();
   }
 
+  queueProfileNameFit() {
+    if (this.profileNameFrame) return;
+
+    this.profileNameFrame = window.requestAnimationFrame(() => {
+      this.profileNameFrame = 0;
+      this.fitProfileName();
+    });
+  }
+
+  fitProfileName() {
+    const name = this.root.querySelector(".profile-card__name");
+    if (!name) return;
+
+    name.style.removeProperty("--profile-name-font-size");
+
+    if (!name.clientWidth) return;
+
+    const maxFontSize = Number.parseFloat(window.getComputedStyle(name).fontSize);
+    const minFontSize = Number.parseFloat(window.getComputedStyle(name).getPropertyValue("--profile-name-min-size")) || 32;
+    const maxLines = Number.parseInt(name.dataset.maxLines || "3", 10);
+
+    const fits = () => {
+      const computed = window.getComputedStyle(name);
+      const lineHeight = Number.parseFloat(computed.lineHeight) || Number.parseFloat(computed.fontSize);
+      const maxHeight = lineHeight * maxLines;
+      return name.scrollWidth <= name.clientWidth + 1 && name.scrollHeight <= maxHeight + 1;
+    };
+
+    if (fits()) return;
+
+    let low = minFontSize;
+    let high = maxFontSize;
+
+    for (let index = 0; index < 10; index += 1) {
+      const mid = (low + high) / 2;
+      name.style.setProperty("--profile-name-font-size", `${mid}px`);
+
+      if (fits()) {
+        low = mid;
+      } else {
+        high = mid;
+      }
+    }
+
+    name.style.setProperty("--profile-name-font-size", `${Math.max(minFontSize, low).toFixed(1)}px`);
+  }
+
   handleClick = async (event) => {
     if (event.target.closest(".hero__visual:not(.hero__visual--dialog)")) {
       if (this.shouldUseAuthDeepLink()) {
@@ -606,11 +671,15 @@ export class MyPubkyApp {
             window.location.href = this.state.auth.authUrl;
           }
           break;
+        case "open-post-preview":
+          event.preventDefault();
+          this.openModal("post-preview", {
+            src: button.dataset.src || "",
+            mediaType: button.dataset.mediaType || "image"
+          });
+          break;
         case "close-modal":
           this.closeModal();
-          break;
-        case "start-create":
-          await this.openAuthModal("create");
           break;
         case "copy-link":
           await navigator.clipboard.writeText(buildProfileUrl(this.state.routePubky));
@@ -1267,6 +1336,7 @@ export class MyPubkyApp {
     `;
     this.bindImageFallbacks();
     this.applyProfileParallax();
+    this.queueProfileNameFit();
     if (routeView === "home" && this.shouldUseScrollDrivenHeroMotion()) {
       this.updateHeroVisualMotionFromProgress(this.getWindowScrollProgress());
     }
@@ -1308,13 +1378,9 @@ export class MyPubkyApp {
               <h1>Your portable profile for the freedom web</h1>
               <p>Create a social presence that’s built to last.</p>
               <div class="hero__actions">
-                <button class="button button--secondary button--lg button--with-icon hero-cta hero-cta--secondary" type="button" data-action="open-auth" data-mode="signin">
-                  <span class="button__icon" aria-hidden="true">${icon("signin")}</span>
-                  <span>Sign in</span>
-                </button>
-                <button class="button button--primary button--lg button--with-icon hero-cta hero-cta--primary" type="button" data-action="open-auth" data-mode="create">
-                  <span class="button__icon" aria-hidden="true">${icon("create")}</span>
-                  <span>Create</span>
+                <button class="button button--primary button--lg button--with-icon hero-cta" type="button" data-action="open-auth" data-mode="create">
+                  <span class="button__icon" aria-hidden="true">${icon("square-user-round")}</span>
+                  <span>Continue</span>
                 </button>
               </div>
             </div>
@@ -1326,7 +1392,7 @@ export class MyPubkyApp {
                 type="button"
                 data-action="open-auth"
                 data-mode="create"
-                aria-label="Create your profile"
+                aria-label="Continue"
                 style="background-image:url('${escapeHtml(HOMEPAGE_VISUAL)}')"
               ></button>
             </div>
@@ -1358,6 +1424,7 @@ export class MyPubkyApp {
       DEFAULT_AVATAR_PATH;
     const flipped = Boolean(cardBackOpen && this.state.cardFlipped);
     const cardBackgroundMode = current.cardBackgroundMode || "dark";
+    const paymentAvailability = getPaymentAvailability(current);
     const showLatestPosts = Boolean(
       current.showLatestPost &&
       Array.isArray(current.latestPosts) &&
@@ -1389,14 +1456,13 @@ export class MyPubkyApp {
                         <div class="card-topbar">
                           <div class="card-topbar__slot card-topbar__slot--start">
                             <button
-                              class="${cn("icon-button", !current.donateEnabled && "icon-button--disabled")}"
+                              class="${cn("icon-button", !paymentAvailability.canDonate && "icon-button--disabled")}"
                               type="button"
-                              ${current.donateEnabled ? 'data-action="open-donate"' : 'disabled'}
-                              aria-label="Donate"
+                              ${paymentAvailability.canDonate ? 'data-action="open-donate"' : 'disabled'}
+                              aria-label="${paymentAvailability.canDonate ? "Donate" : "Donate unavailable"}"
                             >${icon("wallet")}</button>
                           </div>
                           <div class="card-topbar__slot card-topbar__slot--center">
-                            <button class="card-brand" type="button" data-action="open-brand" aria-label="About mypubky.com">${icon("pubky")}</button>
                           </div>
                           <div class="card-topbar__slot card-topbar__slot--end">
                             <button class="icon-button" type="button" data-action="open-share" aria-label="Share">${icon("share")}</button>
@@ -1407,7 +1473,7 @@ export class MyPubkyApp {
                           <button class="avatar avatar--display" type="button" ${own ? 'data-action="trigger-avatar-upload"' : ""} aria-label="Profile avatar">
                             <img src="${escapeHtml(avatarUrl)}" data-fallback-src="${escapeHtml(DEFAULT_AVATAR_PATH)}" alt="${escapeHtml(current.name || "Profile avatar")}" />
                           </button>
-                          <h2>${escapeHtml(current.name || "Unnamed")}</h2>
+                          <h2 class="profile-card__name" data-max-lines="3">${escapeHtml(current.name || "Unnamed")}</h2>
                           <p class="profile-card__bio">${escapeHtml(current.bio || "A portable profile for the freedom web.")}</p>
                           ${showTags ? `<div class="tag-row">${current.tags.map((tag) => renderTagPill(tag)).join("")}</div>` : ""}
                         </div>
@@ -1479,7 +1545,7 @@ export class MyPubkyApp {
                       <div class="profile-card__main">
                         <div class="card-topbar">
                           <div class="card-topbar__slot card-topbar__slot--start"><span class="skeleton skeleton--icon"></span></div>
-                          <div class="card-topbar__slot card-topbar__slot--center"><span class="skeleton skeleton--icon skeleton--brand"></span></div>
+                          <div class="card-topbar__slot card-topbar__slot--center"></div>
                           <div class="card-topbar__slot card-topbar__slot--end"><span class="skeleton skeleton--icon"></span></div>
                         </div>
                         <div class="profile-card__header">
@@ -1535,8 +1601,8 @@ export class MyPubkyApp {
   renderOwnerToolbar() {
     return `
       <div class="owner-toolbar">
-        <button class="button button--toolbar" type="button" data-action="open-edit">${icon("pencil")} <span>Edit</span></button>
-        <button class="button button--toolbar" type="button" data-action="sign-out">${icon("logout")} <span>Sign out</span></button>
+        <button class="button button--toolbar button--toolbar-icon" type="button" data-action="open-edit" aria-label="Edit profile">${icon("pencil")}</button>
+        <button class="button button--toolbar" type="button" data-action="sign-out">Sign out</button>
       </div>
     `;
   }
@@ -1544,8 +1610,8 @@ export class MyPubkyApp {
   renderPublicProfileToolbar() {
     return `
       <div class="owner-toolbar">
-        <button class="button button--toolbar" type="button" data-action="open-brand">${icon("create")} <span>Create</span></button>
-        <button class="button button--toolbar" type="button" data-action="open-auth" data-mode="signin">${icon("signin")} <span>Sign in</span></button>
+        <button class="button button--toolbar button--toolbar-icon" type="button" data-action="open-brand" aria-label="About mypubky.com">?</button>
+        <button class="button button--toolbar" type="button" data-action="open-auth" data-mode="create">Sign in</button>
       </div>
     `;
   }
@@ -1554,9 +1620,9 @@ export class MyPubkyApp {
     const saving = this.state.loading;
     return `
       <div class="owner-toolbar owner-toolbar--panel">
-        <button class="button button--toolbar" type="button" data-action="cancel-panel" ${saving ? "disabled" : ""}>${icon("close")} <span>Cancel</span></button>
+        <button class="button button--toolbar button--toolbar-icon" type="button" data-action="cancel-panel" aria-label="Cancel" ${saving ? "disabled" : ""}>${icon("close")}</button>
         <button class="button button--primary button--toolbar ${saving ? "button--is-loading" : ""}" type="button" data-action="save-panel" ${saving ? "disabled aria-busy=\"true\"" : ""}>
-          ${saving ? '<span class="button__spinner" aria-hidden="true"></span>' : icon("check")}
+          ${saving ? '<span class="button__spinner" aria-hidden="true"></span>' : ""}
           <span>${saving ? "Saving..." : "Save"}</span>
         </button>
       </div>
@@ -1573,20 +1639,32 @@ export class MyPubkyApp {
           primaryTag?.taggers_count || primaryTag?.count || primaryTag?.taggers?.length || 0
         );
         const postUrl = buildPubkyPostUrl(post, this.state.routePubky);
+        const preview = getPostPreview(post);
+        const previewType = preview?.type === "video" ? "video" : preview?.type === "image" ? "image" : "";
+        const previewSource = previewType ? sanitizeBrowserUrl(preview.source) : "";
+        const previewMarkup =
+          previewSource && previewType === "video"
+            ? `<button class="post-card__preview" type="button" data-action="open-post-preview" data-media-type="video" data-src="${escapeHtml(previewSource)}" aria-label="Open post video preview"><video src="${escapeHtml(previewSource)}" muted playsinline preload="metadata"></video><span class="post-card__play" aria-hidden="true"></span></button>`
+            : previewSource
+              ? `<button class="post-card__preview" type="button" data-action="open-post-preview" data-media-type="image" data-src="${escapeHtml(previewSource)}" aria-label="Open post image preview"><img src="${escapeHtml(previewSource)}" alt="" loading="lazy" decoding="async" /></button>`
+              : "";
 
         return `
-          <a class="post-card" href="${escapeHtml(postUrl)}" target="_blank" rel="noreferrer">
-            <div class="post-card__avatar">
-              <img src="${escapeHtml(safeAvatarUrl)}" data-fallback-src="${escapeHtml(DEFAULT_AVATAR_PATH)}" alt="" />
-            </div>
-            <div class="post-card__copy">
-              <p class="post-card__body">${escapeHtml(post?.content || "Untitled post")}</p>
-            </div>
-            <div class="post-card__meta">
-              <time class="post-card__time">${icon("clock")}<span>${escapeHtml(post?.relativeTime || formatRelativeTime(Date.now()))}</span></time>
-              ${primaryTag ? renderTagPill(primaryTag, { className: "tag-pill--post", count: tagCount }) : ""}
-            </div>
-          </a>
+          <article class="${cn("post-card", previewSource && "post-card--has-preview")}">
+            <a class="post-card__header" href="${escapeHtml(postUrl)}" target="_blank" rel="noreferrer">
+              <div class="post-card__avatar">
+                <img src="${escapeHtml(safeAvatarUrl)}" data-fallback-src="${escapeHtml(DEFAULT_AVATAR_PATH)}" alt="" />
+              </div>
+              <div class="post-card__copy">
+                <p class="post-card__body">${escapeHtml(post?.content || "Untitled post")}</p>
+              </div>
+              <div class="post-card__meta">
+                <time class="post-card__time">${icon("clock")}<span>${escapeHtml(post?.relativeTime || formatRelativeTime(Date.now()))}</span></time>
+                ${primaryTag ? renderTagPill(primaryTag, { className: "tag-pill--post", count: tagCount }) : ""}
+              </div>
+            </a>
+            ${previewMarkup}
+          </article>
         `;
       })
       .join("");
@@ -1597,9 +1675,26 @@ export class MyPubkyApp {
   renderDonateBack(profile) {
     const paykitTarget = buildPaykitQrValue(profile.pubky || this.state.routePubky);
     const bitcoinAddress = String(profile.bitcoinAddress || "").trim();
-    const hasBitcoinAddress = Boolean(bitcoinAddress);
+    const { canDonate, hasPaykitMethods, hasBitcoinAddress } = getPaymentAvailability(profile);
+
+    if (!canDonate) {
+      return `
+        <div class="donate-panel">
+          <div class="card-topbar donate-panel__topbar">
+            <div class="card-topbar__slot card-topbar__slot--start">
+              <button class="icon-button" type="button" data-action="close-back" aria-label="Back to profile">${icon("arrow-left")}</button>
+            </div>
+            <div class="card-topbar__slot card-topbar__slot--center">
+            </div>
+            <div class="card-topbar__slot card-topbar__slot--end"></div>
+          </div>
+          <p class="donate-panel__note">No payment details are available for this profile yet.</p>
+        </div>
+      `;
+    }
+
     const qrMode =
-      hasBitcoinAddress && this.state.donateQrMode === "bitcoin"
+      hasBitcoinAddress && (!hasPaykitMethods || this.state.donateQrMode === "bitcoin")
         ? "bitcoin"
         : "paykit";
     const qrValue =
@@ -1615,12 +1710,11 @@ export class MyPubkyApp {
             <button class="icon-button" type="button" data-action="close-back" aria-label="Back to profile">${icon("arrow-left")}</button>
           </div>
           <div class="card-topbar__slot card-topbar__slot--center">
-            <button class="card-brand" type="button" data-action="open-brand" aria-label="About mypubky.com">${icon("pubky")}</button>
           </div>
           <div class="card-topbar__slot card-topbar__slot--end"></div>
         </div>
         ${
-          hasBitcoinAddress
+          hasPaykitMethods && hasBitcoinAddress
             ? `
               <div class="donate-tabs" role="tablist" aria-label="Donation QR type">
                 <button class="${cn("donate-tab", qrMode === "paykit" && "is-active")}" type="button" data-action="set-donate-qr-mode" data-value="paykit" role="tab" aria-selected="${qrMode === "paykit"}">Paykit QR</button>
@@ -1650,7 +1744,6 @@ export class MyPubkyApp {
             <button class="icon-button" type="button" data-action="close-back" aria-label="Back to profile">${icon("arrow-left")}</button>
           </div>
           <div class="card-topbar__slot card-topbar__slot--center">
-            <button class="card-brand" type="button" data-action="open-brand" aria-label="About mypubky.com">${icon("pubky")}</button>
           </div>
           <div class="card-topbar__slot card-topbar__slot--end"></div>
         </div>
@@ -1770,9 +1863,10 @@ export class MyPubkyApp {
         <section class="field-section">
           <span>Donations</span>
           <div class="toggle-row">
-            <p>Enable donations, tips, and other payments via Paykit.</p>
+            <p>Enable donations and other payments via Paykit*.</p>
             ${toggleMarkup(draft.donateEnabled, "donateEnabled")}
           </div>
+          <p class="field-helper">* supported if payment data is available in /pub/paykit/v0/</p>
           <label class="field-group field-group--stack-gap">
             <span>Bitcoin address</span>
             <input class="field" data-field="bitcoinAddress" value="${escapeHtml(draft.bitcoinAddress || "")}" placeholder="bc1..." />
@@ -1866,15 +1960,18 @@ export class MyPubkyApp {
         <div class="dialog dialog--brand">
           <button class="dialog__close" type="button" data-action="close-modal">${icon("close")}</button>
           <div class="dialog__header">
-            <h3>Your portable profile for the freedom web</h3>
+            <h3>Your portable profile<br />for the freedom web</h3>
             <p>Create a social presence that’s built to last. One that nobody can take away from you.</p>
           </div>
           <div class="hero__art hero__art--dialog">
-            <img class="hero__visual hero__visual--dialog" src="${HOMEPAGE_VISUAL}" alt="Pubky profile illustration" />
+            <div class="dialog-brand-visual">
+              <img class="hero__visual hero__visual--dialog" src="${HOMEPAGE_VISUAL}" alt="Pubky profile illustration" />
+              <p class="dialog-brand-visual__label">mypubky.com</p>
+            </div>
           </div>
           <div class="dialog__actions">
             <button class="button button--secondary button--lg" type="button" data-action="close-modal">Cancel</button>
-            <button class="button button--primary button--lg" type="button" data-action="start-create">Create</button>
+            <button class="button button--primary button--lg" type="button" data-action="open-auth" data-mode="create">Continue</button>
           </div>
         </div>
       `;
@@ -1883,7 +1980,7 @@ export class MyPubkyApp {
     if (type === "auth") {
       const mode = this.state.auth?.mode || "create";
       const useDeepLink = Boolean(this.state.auth?.useDeepLink);
-      const title = mode === "signin" ? "Sign in to your profile" : "Create your profile";
+      const title = mode === "signin" ? "Sign in to your profile" : "Sign in to create profile";
       const subtitle =
         mode === "signin"
           ? useDeepLink
@@ -1895,12 +1992,10 @@ export class MyPubkyApp {
             `
           : useDeepLink
             ? `
-              Join <a href="https://pubky.app" target="_blank" rel="noreferrer" class="dialog__accent">pubky.app</a>, authorize with
-              <a href="https://pubkyring.app" target="_blank" rel="noreferrer" class="dialog__accent">Pubky Ring</a>.
+              Authorize with <a href="https://pubkyring.app/" target="_blank" rel="noreferrer" class="dialog__accent">Pubky Ring</a>. You need a homeserver account. Get one by joining <a href="https://pubky.app/" target="_blank" rel="noreferrer" class="dialog__accent">pubky.app</a>.
             `
             : `
-              Join <a href="https://pubky.app" target="_blank" rel="noreferrer" class="dialog__accent">pubky.app</a>, download
-              <a href="https://pubkyring.app" target="_blank" rel="noreferrer" class="dialog__accent">Pubky Ring</a>, scan QR.
+              Scan and authorize with <a href="https://pubkyring.app/" target="_blank" rel="noreferrer" class="dialog__accent">Pubky Ring</a>. You need a homeserver account. Get one by joining <a href="https://pubky.app/" target="_blank" rel="noreferrer" class="dialog__accent">pubky.app</a>.
             `;
       content = `
         <div class="dialog dialog--auth">
@@ -1913,7 +2008,7 @@ export class MyPubkyApp {
             ? `
               <div class="dialog__mobile-auth">
                 <button class="button button--primary button--lg" type="button" data-action="open-auth-link">
-                  <span class="button__icon" aria-hidden="true">${icon("signin")}</span>
+                  <span class="button__icon" aria-hidden="true">${icon("key-round")}</span>
                   <span>Authorize</span>
                 </button>
               </div>
@@ -1965,6 +2060,24 @@ export class MyPubkyApp {
             <button class="button button--secondary button--lg" type="button" data-action="close-modal">Close</button>
             <button class="button button--primary button--lg" type="button" data-action="download-share">Download profile QR</button>
           </div>
+        </div>
+      `;
+    }
+
+    if (type === "post-preview") {
+      const payload = this.state.modal.payload || {};
+      const mediaSrc = sanitizeBrowserUrl(payload.src || "");
+      const mediaType = payload.mediaType === "video" ? "video" : "image";
+      content = `
+        <div class="dialog dialog--post-preview">
+          <button class="dialog__close dialog__close--post-preview" type="button" data-action="close-modal" aria-label="Close media preview">${icon("close")}</button>
+          ${
+            mediaSrc && mediaType === "video"
+              ? `<video class="post-preview-dialog__media" src="${escapeHtml(mediaSrc)}" controls autoplay playsinline></video>`
+              : mediaSrc
+                ? `<img class="post-preview-dialog__media" src="${escapeHtml(mediaSrc)}" alt="" />`
+                : ""
+          }
         </div>
       `;
     }
