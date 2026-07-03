@@ -19,6 +19,7 @@ import {
 } from "./lib/pubky.js";
 import { renderQrSvg } from "./lib/qr.js";
 import {
+  buildProfilePath,
   buildProfileUrl,
   clampUploadSize,
   cn,
@@ -28,6 +29,7 @@ import {
   formatRelativeTime,
   isMailtoUrl,
   isValidMailtoUrl,
+  normalizePubkyIdentifier,
   normalizeUrl,
   sanitizeBrowserUrl,
   shortenPubky,
@@ -802,7 +804,7 @@ export class MyPubkyApp {
           break;
         case "go-session-profile":
           if (this.state.sessionPubky) {
-            this.navigate(`/profile/${this.state.sessionPubky}`);
+            this.navigate(buildProfilePath(this.state.sessionPubky));
           }
           break;
         default:
@@ -899,6 +901,11 @@ export class MyPubkyApp {
 
   async syncRoute() {
     const nextRoute = this.getRoutePubky();
+    const canonicalPath = nextRoute ? buildProfilePath(nextRoute) : "/";
+    if (nextRoute && window.location.pathname !== canonicalPath) {
+      window.history.replaceState({}, "", `${canonicalPath}${window.location.search}${window.location.hash}`);
+    }
+
     this.resetProfileParallax();
     if (nextRoute === this.state.routePubky && !this.state.booting) {
       this.render();
@@ -943,9 +950,9 @@ export class MyPubkyApp {
     if (!pathname) return "";
     if (pathname === "profile") return "";
     if (pathname.startsWith("profile/")) {
-      return pathname.slice("profile/".length);
+      return normalizePubkyIdentifier(pathname.slice("profile/".length));
     }
-    return pathname;
+    return normalizePubkyIdentifier(pathname);
   }
 
   navigate(path, replace = false) {
@@ -1118,7 +1125,7 @@ export class MyPubkyApp {
       this.setNotice("Signed in with Pubky Ring.");
       if (result.pubky) {
         if (this.state.routePubky !== result.pubky) {
-          this.navigate(`/profile/${result.pubky}`);
+          this.navigate(buildProfilePath(result.pubky));
         } else {
           this.render();
         }

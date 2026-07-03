@@ -23,6 +23,47 @@ export function shortenPubky(pubky = "") {
   return `${pubky.slice(0, 4)}...${pubky.slice(-4)}`;
 }
 
+export function normalizePubkyIdentifier(value = "") {
+  let normalized = String(value || "").trim();
+  if (!normalized) return "";
+
+  try {
+    normalized = decodeURIComponent(normalized);
+  } catch {
+    // Keep the original value if it is not URI-encoded.
+  }
+
+  if (/^https?:\/\//i.test(normalized)) {
+    try {
+      const parsed = new URL(normalized);
+      const segments = parsed.pathname.split("/").filter(Boolean);
+      const profileIndex = segments.findIndex((segment) => segment.toLowerCase() === "profile");
+      normalized = profileIndex >= 0 ? (segments[profileIndex + 1] || "") : (segments.at(-1) || "");
+    } catch {
+      // Fall through to prefix handling below.
+    }
+  }
+
+  if (normalized.startsWith("pubky://")) {
+    normalized = normalized.slice("pubky://".length).split("/").filter(Boolean)[0] || "";
+  } else {
+    normalized = normalized.split(/[?#]/)[0].replace(/^\/+|\/+$/g, "");
+  }
+
+  const pkPrefixed = normalized.match(/^pk:([a-z0-9]{52})$/i);
+  if (pkPrefixed) return pkPrefixed[1].toLowerCase();
+
+  const pubkyPrefixed = normalized.match(/^pubky([a-z0-9]{52})$/i);
+  if (pubkyPrefixed) return pubkyPrefixed[1].toLowerCase();
+
+  return normalized;
+}
+
+export function formatPubkyIdentifier(pubky = "") {
+  const normalizedPubky = normalizePubkyIdentifier(pubky);
+  return normalizedPubky ? `pubky${normalizedPubky}` : "";
+}
+
 export function cn(...values) {
   return values.filter(Boolean).join(" ");
 }
@@ -286,8 +327,14 @@ export function clampUploadSize(file, maxBytes) {
 }
 
 export function buildProfileUrl(pubky = "") {
-  if (!pubky) return window.location.origin;
-  return `${window.location.origin}/profile/${pubky}`;
+  const profilePath = buildProfilePath(pubky);
+  if (profilePath === "/") return window.location.origin;
+  return `${window.location.origin}${profilePath}`;
+}
+
+export function buildProfilePath(pubky = "") {
+  const prefixedPubky = formatPubkyIdentifier(pubky);
+  return prefixedPubky ? `/profile/${prefixedPubky}` : "/";
 }
 
 export function download(filename, content, mimeType = "text/plain;charset=utf-8") {
