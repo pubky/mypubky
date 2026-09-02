@@ -1293,9 +1293,7 @@ export async function loadProfileBundle(pubky) {
     fallbackMediaSource(merged.image, pubky)
   );
   const cdnAvatarUrl = buildCdnAvatarUrl(pubky);
-  merged.resolvedAvatarUrl = isDirectMediaUrl(merged.image)
-    ? resolvedAvatarUrl || cdnAvatarUrl
-    : cdnAvatarUrl || resolvedAvatarUrl;
+  merged.resolvedAvatarUrl = resolvedAvatarUrl || cdnAvatarUrl;
   merged.resolvedBackgroundUrl = await resolvePubkyMediaUrl(sdk, merged.backgroundUrl, pubky).catch(() => fallbackMediaSource(merged.backgroundUrl, pubky));
 
   if (Array.isArray(merged.latestPosts)) {
