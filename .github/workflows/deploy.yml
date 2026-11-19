@@ -16,7 +16,7 @@ env:
   REGISTRY: europe-west6-docker.pkg.dev/infra-464608/synonym-private-repo
   IMAGE: mypubky
   REGION: europe-west6
-  SERVICE: mypubky
+  SERVICE: mypubky-com
 
 jobs:
   deploy:
